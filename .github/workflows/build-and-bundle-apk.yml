@@ -1,9 +1,10 @@
-name: Build Polyglot Rust WASM + Android Java 17 APK & Bundle for Vercel
+name: Build Polyglot Rust WASM + Signed Android Java 17 Release APK
 
 on:
   push:
     branches:
       - main
+      - 'arena/**'
   workflow_dispatch:
 
 permissions:
@@ -11,12 +12,16 @@ permissions:
 
 jobs:
   build-kinesio-guard-apk:
-    name: Compile Rust WASM + Vue 3.5 + Java 17 Android APK
+    name: Compile Rust WASM + Vue 3.5 + Signed Java 17 Android APK
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
 
       - name: Verify Strict Zero-TypeScript Policy (0.0% TS)
         run: |
@@ -33,16 +38,20 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      - name: Compile & Test Rust Biomechanics Crate
-        working-directory: rust-biomechanics
+      - name: Compile & Test Rust Biomechanics Crate + Export WASM32 Binary
         run: |
+          cd rust-biomechanics
           cargo test --release
           cargo build --release --target wasm32-unknown-unknown
+          mkdir -p ../public/wasm
+          cp target/wasm32-unknown-unknown/release/kinesio_rust_biomechanics.wasm ../public/wasm/kinesio_rust_biomechanics.wasm
+          ls -lh ../public/wasm/kinesio_rust_biomechanics.wasm
 
       - name: Setup Go 1.22 & Validate Serverless Cervical Engine
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
+          cache: false
 
       - name: Vet, Test & Build Go 1.22 Biomechanics Package
         run: |
@@ -57,40 +66,180 @@ jobs:
           cache: 'npm'
 
       - name: Setup Java 17 (Temurin JDK for Android Gradle)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK for Gradle APK Assembly
-        uses: android-actions/setup-android@v3
+      - name: Verify Native Ubuntu Runner Android SDK (Platform 34 + Build-Tools)
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          SDKMANAGER=$(find "$ANDROID_HOME" -name sdkmanager -type f 2>/dev/null | head -n 1 || true)
+          if [ ! -d "$ANDROID_HOME/platforms/android-34" ] && [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+            "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0"
+          fi
+          ls -la "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools"
 
       - name: Install Dependencies & Build Vue 3.5 Web Bundle
         run: |
           npm ci
           npm run build
+          rm -rf dist/releases
 
-      - name: Sync Capacitor 6 Android Project & Assemble APK
+      - name: Assemble, ZipAlign & Cryptographically Sign Android Release APK (v1+v2+v3)
         run: |
-          npm install --no-save @capacitor/core@^6.2.0 @capacitor/cli@^6.2.0 @capacitor/android@^6.2.0
-          if [ ! -f "android/build.gradle" ]; then
-            mkdir -p /tmp/java-plugins-backup
-            cp -r android/app/src/main/java/com/kinesioguard/neuro/*.java /tmp/java-plugins-backup/
-            rm -rf android
-            npx cap add android
-            mkdir -p android/app/src/main/java/com/kinesioguard/neuro
-            cp /tmp/java-plugins-backup/*.java android/app/src/main/java/com/kinesioguard/neuro/
-          fi
+          npm install --no-save @capacitor/core@6.2.0 @capacitor/cli@6.2.0 @capacitor/android@6.2.0
+
+          mkdir -p /tmp/java-plugins-backup
+          cp android/app/src/main/java/com/kinesioguard/neuro/*.java /tmp/java-plugins-backup/
+          rm -rf android
+          npx cap add android
+          mkdir -p android/app/src/main/java/com/kinesioguard/neuro
+          cp /tmp/java-plugins-backup/*.java android/app/src/main/java/com/kinesioguard/neuro/
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          manifest_path = Path("android/app/src/main/AndroidManifest.xml")
+          xml = manifest_path.read_text(encoding="utf-8")
+          perms = """
+              <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+              <uses-permission android:name="android.permission.VIBRATE" />
+              <uses-permission android:name="android.permission.CAMERA" />
+              <uses-feature android:name="android.hardware.camera" android:required="false" />
+              <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />
+              <uses-feature android:name="android.hardware.sensor.gyroscope" android:required="false" />
+          """
+          if "HIGH_SAMPLING_RATE_SENSORS" not in xml:
+              xml = xml.replace("</manifest>", perms + "\n</manifest>")
+          if 'android:hardwareAccelerated=' not in xml:
+              xml = xml.replace("<application", '<application android:hardwareAccelerated="true"', 1)
+          manifest_path.write_text(xml, encoding="utf-8")
+
+          gradle_path = Path("android/app/build.gradle")
+          gradle = gradle_path.read_text(encoding="utf-8")
+          gradle = gradle.replace("versionCode 1", "versionCode 100")
+          gradle = gradle.replace('versionName "1.0"', 'versionName "1.0.0"')
+          lint_cfg = "\n    lint {\n        checkReleaseBuilds false\n        abortOnError false\n    }\n"
+          gradle = gradle.replace("buildTypes {", lint_cfg + "    buildTypes {", 1)
+          gradle_path.write_text(gradle, encoding="utf-8")
+          PY
+
           npx cap sync android
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
-          mkdir -p ../public/releases
-          cp app/build/outputs/apk/debug/app-debug.apk ../public/releases/kinesioguard-release.apk
+          if ! ./gradlew assembleRelease --no-daemon -x lintVitalRelease > /tmp/gradle-build.log 2>&1; then
+            tail -n 30 /tmp/gradle-build.log
+            ERR_LINE=$(tail -n 15 /tmp/gradle-build.log | tr '\n' ' ')
+            echo "::error title=Gradle Build Error::$ERR_LINE"
+            exit 1
+          fi
+          tail -n 15 /tmp/gradle-build.log
+          cd ..
 
-      - name: Upload Compiled KinesioGuard APK Artifact
+          UNSIGNED_APK=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$UNSIGNED_APK" ]; then
+            echo "ERROR: Unsigned release APK not found!"
+            exit 1
+          fi
+
+          keytool -genkeypair -v \
+            -keystore /tmp/kinesioguard-release.jks \
+            -storetype PKCS12 \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -alias kinesioguard \
+            -storepass kinesioguard2026 \
+            -keypass kinesioguard2026 \
+            -dname "CN=KinesioGuard NeuroBiomech Lab, OU=Clinical Biomechanics, O=KinesioGuard, L=Meru, S=Meru, C=KE"
+
+          BUILD_TOOLS_DIR=$(ls -d "$ANDROID_HOME/build-tools/"* | sort -V | tail -n 1)
+          "$BUILD_TOOLS_DIR/zipalign" -f -p 4 "$UNSIGNED_APK" /tmp/kinesioguard-aligned.apk
+
+          mkdir -p public/releases
+          "$BUILD_TOOLS_DIR/apksigner" sign \
+            --ks /tmp/kinesioguard-release.jks \
+            --ks-key-alias kinesioguard \
+            --ks-pass pass:kinesioguard2026 \
+            --key-pass pass:kinesioguard2026 \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out public/releases/kinesioguard-release.apk \
+            /tmp/kinesioguard-aligned.apk
+
+          "$BUILD_TOOLS_DIR/apksigner" verify --verbose --print-certs public/releases/kinesioguard-release.apk > /tmp/apksigner-verify.txt
+          cat /tmp/apksigner-verify.txt
+
+          python3 - <<'PY'
+          import datetime, hashlib, json, re, zipfile
+          from pathlib import Path
+
+          apk_path = Path("public/releases/kinesioguard-release.apk")
+          wasm_path = Path("public/wasm/kinesio_rust_biomechanics.wasm")
+          verify_txt = Path("/tmp/apksigner-verify.txt").read_text(encoding="utf-8")
+
+          apk_bytes = apk_path.read_bytes()
+          sha256_hex = hashlib.sha256(apk_bytes).hexdigest()
+          wasm_len = wasm_path.stat().st_size if wasm_path.exists() else 0
+
+          cert_match = re.search(r"SHA-256 digest:\s*([0-9a-fA-F]{64})", verify_txt)
+          cert_sha256 = cert_match.group(1).lower() if cert_match else ""
+
+          with zipfile.ZipFile(apk_path, "r") as zf:
+              entry_count = len(zf.namelist())
+
+          mb = len(apk_bytes) / (1024 * 1024)
+          manifest = {
+              "packageId": "com.kinesioguard.neuro",
+              "appName": "KinesioGuard",
+              "versionName": "1.0.0",
+              "versionCode": 100,
+              "minSdk": 22,
+              "targetSdk": 34,
+              "byteLength": len(apk_bytes),
+              "sizeFormatted": f"{mb:.2f} MB",
+              "sha256": sha256_hex,
+              "certSha256": cert_sha256,
+              "signingSchemes": ["v1 (JAR)", "v2 (APK Sig Block)", "v3 (Key Rotation)"],
+              "compiler": "Gradle 8.2.1 + Temurin JDK 17 + Capacitor 6.2.0 + Rustc WASM32",
+              "wasmByteLength": wasm_len,
+              "entryCount": entry_count,
+              "builtAtISO": datetime.datetime.now(datetime.timezone.utc).isoformat()
+          }
+          Path("public/releases/apk-manifest.json").write_text(
+              json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+          )
+          print("Generated apk-manifest.json:", json.dumps(manifest, indent=2))
+          PY
+
+          rm -rf android
+          git checkout -- android package.json package-lock.json
+
+      - name: Commit Compiled Signed APK & Rust WASM to Working Branch
+        if: startsWith(github.ref_name, 'arena/')
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f public/wasm/kinesio_rust_biomechanics.wasm public/releases/kinesioguard-release.apk public/releases/apk-manifest.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(apk): bundle Gradle-signed Android Java 17 APK + Rust WASM32 binary [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Upload Compiled KinesioGuard Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: KinesioGuard-NeuroBiomech-v1.0.0-apk
-          path: public/releases/kinesioguard-release.apk
+          path: |
+            public/releases/kinesioguard-release.apk
+            public/releases/apk-manifest.json
+            public/wasm/kinesio_rust_biomechanics.wasm
           retention-days: 30

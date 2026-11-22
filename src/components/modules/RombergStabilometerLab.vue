@@ -11,6 +11,7 @@ import {
   CheckCircle2
 } from 'lucide-vue-next'
 import { useSpring2D } from '../../composables/useSpringPhysics.js'
+import { emitBioHapticFeedback } from '../../engines/sensorFusionEngine.js'
 import {
   ROMBERG_PRESETS,
   generateRombergSwaySeries,
@@ -130,6 +131,7 @@ function startGuided30sRombergProtocol() {
       if (phaseTimerSec.value <= 0) {
         protocolPhase.value = 'eyes-closed-15s'
         phaseTimerSec.value = 15.0
+        emitBioHapticFeedback('romberg-transition')
       }
     } else if (protocolPhase.value === 'eyes-closed-15s') {
       const mlVal = hasDeviceTilt
@@ -145,6 +147,7 @@ function startGuided30sRombergProtocol() {
         clearInterval(protocolTimer)
         protocolTimer = null
         protocolPhase.value = 'idle'
+        emitBioHapticFeedback('romberg-complete')
         if (liveOpenMl.length >= 20 && liveClosedMl.length >= 20) {
           openSeries.value = { ml: Float64Array.from(liveOpenMl), ap: Float64Array.from(liveOpenAp) }
           closedSeries.value = { ml: Float64Array.from(liveClosedMl), ap: Float64Array.from(liveClosedAp) }

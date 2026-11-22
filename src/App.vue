@@ -13,8 +13,10 @@ import ApkDownloadModal from './components/modals/ApkDownloadModal.vue'
 import ClinicalReportModal from './components/modals/ClinicalReportModal.vue'
 
 import {
-  requestMotionOrientationPermissions
+  requestMotionOrientationPermissions,
+  probeNativeAndroidBridge
 } from './engines/sensorFusionEngine.js'
+import { initRustBiomechWasm } from './engines/rustBiomechBridge.js'
 import { invokeGoKinesioTriage } from './engines/cervicalGoMirror.js'
 import {
   loadAllVaultRecords,
@@ -31,6 +33,7 @@ const roleTier = ref('STANDARD') // 'STANDARD' | 'PRO' | 'ADMIN'
 const privilegesOpen = ref(false)
 const apkModalOpen = ref(false)
 const activeClinicalReport = ref(null)
+const nativeBridge = ref({ isNativeApk: false, platform: 'web-browser' })
 
 // Specular cursor & gyroscope coordinates (0..1)
 const pointerX = ref(0.5)
@@ -215,28 +218,48 @@ function handleJumpToPolyglot() {
 }
 
 onMounted(async () => {
+  initRustBiomechWasm()
   vaultRecords.value = await loadAllVaultRecords()
   window.addEventListener('pointermove', handlePointerMove, { passive: true })
   window.addEventListener('devicemotion', handleDeviceMotion, { passive: true })
   window.addEventListener('deviceorientation', handleDeviceOrientation, { passive: true })
 
-  // Listen to Native Android Capacitor Java 17 InertialKinematicsPlugin if inside APK
+  // Probe & auto-start Native Android Capacitor Java 17 200Hz plugins when inside installed .APK
+  const bridgeStatus = await probeNativeAndroidBridge()
+  nativeBridge.value = bridgeStatus
+
+  if (bridgeStatus.isNativeApk && bridgeStatus.ecoProfile?.recommendEcoGlass60Fps) {
+    theme.value = 'eco'
+  }
+
   const nativeImu = window.Capacitor?.Plugins?.InertialKinematics
-  if (nativeImu && typeof nativeImu.addListener === 'function') {
+  if (nativeImu) {
     sensors.linearImu.statusLabel = 'JAVA NATIVE 200HZ ACTIVE'
     sensors.gyroClinometer.statusLabel = 'JAVA NATIVE ROTATION ACTIVE'
-    nativeImu.addListener('inertialFrame', (frame) => {
-      if (sensors.linearImu.enabled) {
-        liveImuSample.ax = Number(frame.ax || 0)
-        liveImuSample.ay = Number(frame.ay || 0)
-        liveImuSample.az = Number(frame.az || 0)
-        liveImuSample.active = true
-      }
-      if (sensors.gyroClinometer.enabled) {
-        devicePitchDeg.value = Number(frame.cranialFlexionDeg || 0)
-        deviceRollDeg.value = Number(frame.sternumRollDeg || 0)
-      }
-    })
+    sensors.bioHaptic.statusLabel = bridgeStatus.hapticCaps?.hasVibrator
+      ? 'JAVA 17 LRA HAPTIC 180° READY'
+      : 'WEB AUDIO + HAPTIC READY'
+
+    if (typeof nativeImu.startHighRateStream === 'function') {
+      nativeImu
+        .startHighRateStream({ sampleRateHz: 200, bridgeFps: 60 })
+        .catch(() => {})
+    }
+
+    if (typeof nativeImu.addListener === 'function') {
+      nativeImu.addListener('inertialFrame', (frame) => {
+        if (sensors.linearImu.enabled) {
+          liveImuSample.ax = Number(frame.ax || 0)
+          liveImuSample.ay = Number(frame.ay || 0)
+          liveImuSample.az = Number(frame.az || 0)
+          liveImuSample.active = true
+        }
+        if (sensors.gyroClinometer.enabled) {
+          devicePitchDeg.value = Number(frame.cranialFlexionDeg || 0)
+          deviceRollDeg.value = Number(frame.sternumRollDeg || 0)
+        }
+      })
+    }
   }
 })
 
@@ -272,6 +295,7 @@ onUnmounted(() => {
           :role-tier="roleTier"
           :active-sensor-count="activeSensorCount"
           :stress-level="shaderStressLevel"
+          :native-bridge="nativeBridge"
           @open-privileges="privilegesOpen = true"
           @open-apk-modal="apkModalOpen = true"
         />
@@ -428,6 +452,7 @@ onUnmounted(() => {
     <ApkDownloadModal
       :open="apkModalOpen"
       :theme="theme"
+      :native-bridge="nativeBridge"
       @close="apkModalOpen = false"
     />
 

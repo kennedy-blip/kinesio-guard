@@ -20,34 +20,61 @@ const KINESIO_WASM_KERNEL_BYTES = new Uint8Array([
 ])
 
 let wasmExports = null
+let rustcWasmExports = null
+let wasmRuntimeSource = 'INLINE_WASM_F64_KERNEL'
+let wasmByteLength = KINESIO_WASM_KERNEL_BYTES.byteLength
 let wasmReadyPromise = null
 
-export function initRustBiomechWasm() {
-  if (wasmExports) {
-    return Promise.resolve({ ready: true, mode: 'WASM_F64_SIMD_READY', exports: Object.keys(wasmExports) })
+export function getWasmRuntimeInfo() {
+  const activeExports = rustcWasmExports || wasmExports
+  return {
+    ready: Boolean(activeExports),
+    source: wasmRuntimeSource,
+    byteLength: wasmByteLength,
+    exports: activeExports ? Object.keys(activeExports).filter((k) => k !== 'memory') : []
   }
-  if (typeof WebAssembly !== 'undefined') {
+}
+
+async function tryUpgradeToCompiledRustWasm() {
+  if (typeof window === 'undefined' || typeof fetch !== 'function' || typeof WebAssembly === 'undefined') {
+    return null
+  }
+  try {
+    const res = await fetch('/wasm/kinesio_rust_biomechanics.wasm', { cache: 'default' })
+    if (!res.ok) return null
+    const buf = await res.arrayBuffer()
+    const bytes = new Uint8Array(buf)
+    // Verify WebAssembly magic header \0asm (0x00 0x61 0x73 0x6d)
+    if (bytes.length < 8 || bytes[0] !== 0x00 || bytes[1] !== 0x61 || bytes[2] !== 0x73 || bytes[3] !== 0x6d) {
+      return null
+    }
+    const { instance } = await WebAssembly.instantiate(buf, {})
+    if (instance && instance.exports) {
+      rustcWasmExports = instance.exports
+      wasmRuntimeSource = 'RUSTC_WASM32_RELEASE_BINARY'
+      wasmByteLength = bytes.byteLength
+      return rustcWasmExports
+    }
+  } catch {
+    // Retain inline WASM f64 kernel seamlessly when running in Node/headless or before first build
+  }
+  return null
+}
+
+export function initRustBiomechWasm() {
+  if (!wasmExports && typeof WebAssembly !== 'undefined') {
     try {
       const mod = new WebAssembly.Module(KINESIO_WASM_KERNEL_BYTES)
       const inst = new WebAssembly.Instance(mod)
       wasmExports = inst.exports
-      wasmReadyPromise = Promise.resolve({
-        ready: true,
-        mode: 'WASM_F64_SIMD_READY',
-        exports: Object.keys(wasmExports)
-      })
-      return wasmReadyPromise
     } catch {
-      wasmReadyPromise = WebAssembly.instantiate(KINESIO_WASM_KERNEL_BYTES)
-        .then(({ instance }) => {
-          wasmExports = instance.exports
-          return { ready: true, mode: 'WASM_F64_SIMD_READY', exports: Object.keys(wasmExports) }
-        })
-        .catch(() => ({ ready: false, mode: 'ES2024_FALLBACK' }))
-      return wasmReadyPromise
+      // Fallback handled asynchronously below
     }
   }
-  wasmReadyPromise = Promise.resolve({ ready: false, mode: 'ES2024_FALLBACK' })
+
+  if (!wasmReadyPromise) {
+    wasmReadyPromise = tryUpgradeToCompiledRustWasm().then(() => getWasmRuntimeInfo())
+  }
   return wasmReadyPromise
 }
 
@@ -431,9 +458,11 @@ export function computeWelchTremorSpectrum(ax, ay, az, sampleRateHz = 200) {
   )
 
   const mdsUpdrsScore =
-    rmsDisplacementMm < 0.12
-      ? 0
-      : Number(Math.max(0, Math.min(4.0, Math.log10((rmsDisplacementMm / 10) / 0.025) * 1.65)).toFixed(1))
+    typeof rustcWasmExports?.kinesio_updrs_log_score === 'function'
+      ? Number(rustcWasmExports.kinesio_updrs_log_score(rmsDisplacementMm).toFixed(1))
+      : rmsDisplacementMm < 0.12
+        ? 0
+        : Number(Math.max(0, Math.min(4.0, Math.log10((rmsDisplacementMm / 10) / 0.025) * 1.65)).toFixed(1))
 
   let classification = {
     code: 'NOMINAL',
@@ -670,12 +699,17 @@ export function computeRombergPcaMetrics(ml, ap, durationSec = 15) {
   const lambdaMajor = Math.max(1e-6, traceHalf + disc)
   const lambdaMinor = Math.max(1e-6, traceHalf - disc)
 
-  // Execute WASM determinant kernel when instantiated
-  const detCov = wasmExports
-    ? Math.max(1e-9, wasmExports.ellipse_det(covXX, covYY, covXY))
-    : Math.max(1e-9, lambdaMajor * lambdaMinor)
-
-  const areaMm2 = Math.PI * CHI_SQUARE_2DOF_95 * Math.sqrt(detCov)
+  // Execute compiled Rustc WASM export when loaded, else inline WASM f64 determinant kernel
+  const areaMm2 =
+    typeof rustcWasmExports?.kinesio_pca_ellipse_area_mm2 === 'function'
+      ? rustcWasmExports.kinesio_pca_ellipse_area_mm2(covXX, covYY, covXY)
+      : Math.PI *
+        CHI_SQUARE_2DOF_95 *
+        Math.sqrt(
+          wasmExports
+            ? Math.max(1e-9, wasmExports.ellipse_det(covXX, covYY, covXY))
+            : Math.max(1e-9, lambdaMajor * lambdaMinor)
+        )
   const chiSqrt = Math.sqrt(CHI_SQUARE_2DOF_95)
   const semiMajorMm = chiSqrt * Math.sqrt(lambdaMajor)
   const semiMinorMm = chiSqrt * Math.sqrt(lambdaMinor)
@@ -780,7 +814,9 @@ export function runPolyglotDspBenchmark() {
   const tKalman = performance.now() - t2
 
   return {
-    wasmKernelActive: Boolean(wasmExports),
+    wasmKernelActive: Boolean(rustcWasmExports || wasmExports),
+    wasmRuntimeSource,
+    wasmByteLength,
     welchFft2048Ms: Number(tFft.toFixed(2)),
     detectedPeakHz: spectrum.dominantFreqHz,
     pca600PointsMs: Number(tPca.toFixed(2)),

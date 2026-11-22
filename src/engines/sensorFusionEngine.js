@@ -71,6 +71,10 @@ export async function emitBioHapticFeedback(mode = 'posture', frequencyHz = 5.5)
           amplitude: 165,
           cycles: 12
         })
+      } else if (mode === 'romberg-transition' || mode === 'romberg-complete') {
+        await nativeHaptic.emitRombergEyesClosedCue({
+          stage: mode === 'romberg-complete' ? 'TRIAL_COMPLETE' : 'EYES_CLOSED_TRANSITION'
+        })
       } else {
         await nativeHaptic.emitCervicalPostureAlert({ flexionDegrees: 38 })
       }
@@ -86,6 +90,10 @@ export async function emitBioHapticFeedback(mode = 'posture', frequencyHz = 5.5)
       const onMs = Math.round(periodMs * 0.3)
       const offMs = periodMs - onMs
       navigator.vibrate([onMs, offMs, onMs, offMs, onMs, offMs, onMs])
+    } else if (mode === 'romberg-transition') {
+      navigator.vibrate([55, 55, 55, 55, 85])
+    } else if (mode === 'romberg-complete') {
+      navigator.vibrate([90, 60, 140])
     } else {
       navigator.vibrate([45, 65, 85])
     }
@@ -93,6 +101,57 @@ export async function emitBioHapticFeedback(mode = 'posture', frequencyHz = 5.5)
   }
 
   return { emitted: false, channel: 'AUDIO_BIOFEEDBACK_FALLBACK' }
+}
+
+/**
+ * Probes the live Android Capacitor 6 Java 17 plugin bridge when running inside the installed .APK.
+ */
+export async function probeNativeAndroidBridge() {
+  if (typeof window === 'undefined') {
+    return { isNativeApk: false, platform: 'ssr', imuCaps: null, hapticCaps: null, ecoProfile: null }
+  }
+  const cap = window.Capacitor
+  const isNativeApk = Boolean(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform())
+  if (!isNativeApk) {
+    return {
+      isNativeApk: false,
+      platform: 'web-browser',
+      imuCaps: null,
+      hapticCaps: null,
+      ecoProfile: null
+    }
+  }
+
+  let imuCaps = null
+  let hapticCaps = null
+  let ecoProfile = null
+
+  try {
+    if (cap.Plugins?.InertialKinematics?.getHardwareCapabilities) {
+      imuCaps = await cap.Plugins.InertialKinematics.getHardwareCapabilities()
+    }
+  } catch {
+    imuCaps = null
+  }
+
+  try {
+    if (cap.Plugins?.BioHapticStabilizer?.getHapticStatus) {
+      hapticCaps = await cap.Plugins.BioHapticStabilizer.getHapticStatus()
+    }
+    if (cap.Plugins?.BioHapticStabilizer?.getDeviceEcoGpuProfile) {
+      ecoProfile = await cap.Plugins.BioHapticStabilizer.getDeviceEcoGpuProfile()
+    }
+  } catch {
+    hapticCaps = null
+  }
+
+  return {
+    isNativeApk: true,
+    platform: cap.getPlatform ? cap.getPlatform() : 'android',
+    imuCaps,
+    hapticCaps,
+    ecoProfile
+  }
 }
 
 /**

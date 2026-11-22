@@ -213,6 +213,7 @@ public class BioHapticStabilizerPlugin extends Plugin {
         call.resolve(res);
     }
 
+    @SuppressWarnings("deprecation")
     private void triggerWaveform(long[] timings, int[] amplitudes, int repeatIndex) {
         if (vibrator == null) {
             return;

@@ -37,7 +37,7 @@ impl Default for AxisKalmanState {
             p00: 1.0,
             p01: 0.0,
             p10: 0.0,
-            p11: 10.0,
+            p11: 50.0,
         }
     }
 }
@@ -101,8 +101,8 @@ impl KalmanAntiTremor2D {
     ) -> (f64, f64) {
         let safe_dt = dt.clamp(0.002, 0.1);
 
-        // Low-pass voluntary trajectory tracker (~0.9 Hz cutoff)
-        let alpha_vol = (safe_dt / (0.18 + safe_dt)).clamp(0.01, 0.5);
+        // Low-pass voluntary trajectory tracker (~0.6 Hz cutoff)
+        let alpha_vol = (safe_dt / (0.28 + safe_dt)).clamp(0.01, 0.5);
         axis.voluntary_baseline_mm += alpha_vol * (measured_mm - axis.voluntary_baseline_mm);
         let isolated_tremor = measured_mm - axis.voluntary_baseline_mm;
 
@@ -114,7 +114,7 @@ impl KalmanAntiTremor2D {
         let dt3 = dt2 * safe_dt;
         let q00 = q * dt3 / 3.0;
         let q01 = q * dt2 * 0.5;
-        let q11 = q * safe_dt * 18.0;
+        let q11 = q * safe_dt * 24.0;
 
         let p00_minus = axis.p00 + safe_dt * (axis.p10 + axis.p01) + dt2 * axis.p11 + q00;
         let p01_minus = axis.p01 + safe_dt * axis.p11 + q01;
@@ -210,6 +210,24 @@ pub extern "C" fn kinesio_pca_ellipse_area_mm2(cov_xx: f64, cov_yy: f64, cov_xy:
     let l1 = (trace_half + disc).max(1e-6);
     let l2 = (trace_half - disc).max(1e-6);
     core::f64::consts::PI * romberg_sway::CHI_SQUARE_2DOF_95 * (l1 * l2).sqrt()
+}
+
+/// C/WebAssembly ABI entry point: computes Elble-Weber logarithmic MDS-UPDRS tremor severity (0.0 - 4.0).
+#[no_mangle]
+pub extern "C" fn kinesio_updrs_log_score(rms_displacement_mm: f64) -> f64 {
+    if rms_displacement_mm < 0.12 {
+        0.0
+    } else {
+        let amp_cm = (rms_displacement_mm / 10.0).max(0.001);
+        ((amp_cm / 0.025).log10() * 1.65).clamp(0.0, 4.0)
+    }
+}
+
+/// C/WebAssembly ABI entry point: projects sternum tilt angle (degrees) to ground CoP excursion (mm).
+#[no_mangle]
+pub extern "C" fn kinesio_sternum_cop_mm(tilt_deg: f64, sternum_height_mm: f64) -> f64 {
+    let h = sternum_height_mm.clamp(850.0, 1650.0);
+    h * 0.18 * tilt_deg.to_radians().sin()
 }
 
 /// 6-DoF Madgwick Quaternion AHRS filter fusing 200Hz 3-axis gyroscope (rad/s) and
@@ -363,7 +381,7 @@ mod tests {
 
     #[test]
     fn kalman_filter_attenuates_5_5_hz_tremor() {
-        let mut kf = KalmanAntiTremor2D::new(38.0, 0.08, 0.012, 1.0);
+        let mut kf = KalmanAntiTremor2D::new(450.0, 0.015, 0.002, 1.0);
         let dt = 1.0 / 120.0;
         let mut raw_rms_acc = 0.0;
         let mut res_rms_acc = 0.0;
