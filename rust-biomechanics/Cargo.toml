@@ -1,0 +1,18 @@
+[package]
+name = "kinesio-rust-biomechanics"
+version = "1.0.0"
+edition = "2021"
+authors = ["Kinesio-Guard Biomechanics Systems Lab"]
+description = "3-Axis Welch PSD Tremor Classifier (1-18 Hz), 2D Inverse-Phase Kalman Anti-Tremor Stabilizer, Archimedes Spiral Ataxia Analyzer & PCA 95% Confidence Ellipse Romberg Stabilometer"
+license = "MIT"
+
+[lib]
+name = "kinesio_rust_biomechanics"
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

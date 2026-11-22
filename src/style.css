@@ -1,0 +1,267 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,
+[data-theme="obsidian"] {
+  --kg-bg-primary: #05070f;
+  --kg-bg-elevated: rgba(11, 17, 34, 0.64);
+  --kg-bg-elevated-strong: rgba(13, 21, 42, 0.84);
+  --kg-bg-subtle: rgba(255, 255, 255, 0.045);
+  --kg-text-primary: #f1f5f9;
+  --kg-text-secondary: #94a3b8;
+  --kg-text-muted: #64748b;
+  --kg-accent: #06b6d4;
+  --kg-accent-secondary: #10b981;
+  --kg-accent-tertiary: #8b5cf6;
+  --kg-prism-a: rgba(34, 211, 238, 0.42);
+  --kg-prism-b: rgba(255, 255, 255, 0.20);
+  --kg-prism-c: rgba(139, 92, 246, 0.36);
+  --kg-inner-specular: rgba(255, 255, 255, 0.28);
+  --kg-shadow: 0 20px 50px -15px rgba(2, 6, 23, 0.72);
+  --kg-blur: 22px;
+  --spec-x: 50%;
+  --spec-y: 25%;
+}
+
+[data-theme="daylight"] {
+  --kg-bg-primary: #eef3f9;
+  --kg-bg-elevated: rgba(255, 255, 255, 0.80);
+  --kg-bg-elevated-strong: rgba(255, 255, 255, 0.94);
+  --kg-bg-subtle: rgba(15, 23, 42, 0.045);
+  --kg-text-primary: #0f172a;
+  --kg-text-secondary: #334155;
+  --kg-text-muted: #64748b;
+  --kg-accent: #0284c7;
+  --kg-accent-secondary: #059669;
+  --kg-accent-tertiary: #6d28d9;
+  --kg-prism-a: rgba(14, 165, 233, 0.40);
+  --kg-prism-b: rgba(15, 23, 42, 0.12);
+  --kg-prism-c: rgba(124, 58, 237, 0.30);
+  --kg-inner-specular: rgba(255, 255, 255, 0.88);
+  --kg-shadow: 0 18px 40px -14px rgba(15, 23, 42, 0.14);
+  --kg-blur: 20px;
+}
+
+[data-theme="amber"] {
+  --kg-bg-primary: #120b06;
+  --kg-bg-elevated: rgba(31, 19, 11, 0.72);
+  --kg-bg-elevated-strong: rgba(40, 24, 13, 0.90);
+  --kg-bg-subtle: rgba(251, 191, 36, 0.065);
+  --kg-text-primary: #fef3c7;
+  --kg-text-secondary: #fcd34d;
+  --kg-text-muted: #d97706;
+  --kg-accent: #f59e0b;
+  --kg-accent-secondary: #fb923c;
+  --kg-accent-tertiary: #ea580c;
+  --kg-prism-a: rgba(245, 158, 11, 0.45);
+  --kg-prism-b: rgba(254, 243, 199, 0.22);
+  --kg-prism-c: rgba(234, 88, 12, 0.38);
+  --kg-inner-specular: rgba(254, 243, 199, 0.26);
+  --kg-shadow: 0 20px 50px -15px rgba(10, 5, 2, 0.80);
+  --kg-blur: 20px;
+}
+
+[data-theme="eco"] {
+  --kg-bg-primary: #090e18;
+  --kg-bg-elevated: rgba(15, 23, 38, 0.97);
+  --kg-bg-elevated-strong: rgba(19, 29, 48, 0.99);
+  --kg-bg-subtle: rgba(148, 163, 184, 0.08);
+  --kg-text-primary: #f8fafc;
+  --kg-text-secondary: #cbd5e1;
+  --kg-text-muted: #94a3b8;
+  --kg-accent: #14b8a6;
+  --kg-accent-secondary: #10b981;
+  --kg-accent-tertiary: #38bdf8;
+  --kg-prism-a: rgba(20, 184, 166, 0.42);
+  --kg-prism-b: rgba(148, 163, 184, 0.24);
+  --kg-prism-c: rgba(56, 189, 248, 0.32);
+  --kg-inner-specular: rgba(255, 255, 255, 0.14);
+  --kg-shadow: 0 10px 24px -10px rgba(0, 0, 0, 0.65);
+  --kg-blur: 0px;
+}
+
+html,
+body {
+  background-color: var(--kg-bg-primary);
+  color: var(--kg-text-primary);
+  min-height: 100%;
+  overflow-x: hidden;
+  font-feature-settings: "cv02", "cv03", "cv04", "tnum";
+}
+
+/* Chromatic Aberration 1px Diagonal Prism Glass Surface + Gyro/Cursor Specular Sweep */
+.kg-glass-panel {
+  position: relative;
+  background: var(--kg-bg-elevated);
+  backdrop-filter: blur(var(--kg-blur)) saturate(155%);
+  -webkit-backdrop-filter: blur(var(--kg-blur)) saturate(155%);
+  box-shadow:
+    inset 0 1px 1px var(--kg-inner-specular),
+    var(--kg-shadow);
+  border-radius: 1.25rem;
+  isolation: isolate;
+}
+
+[data-theme="eco"] .kg-glass-panel {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.kg-glass-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    var(--kg-prism-a) 0%,
+    var(--kg-prism-b) 48%,
+    var(--kg-prism-c) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.kg-glass-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    460px circle at var(--spec-x) var(--spec-y),
+    rgba(255, 255, 255, 0.075),
+    transparent 62%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+[data-theme="daylight"] .kg-glass-panel::after {
+  background: radial-gradient(
+    460px circle at var(--spec-x) var(--spec-y),
+    rgba(14, 165, 233, 0.08),
+    transparent 62%
+  );
+}
+
+[data-theme="eco"] .kg-glass-panel::after {
+  display: none;
+}
+
+/* Tactile Squish & Press Micro-Physics */
+.kg-squish-card {
+  transition:
+    transform 240ms cubic-bezier(0.22, 1.35, 0.36, 1),
+    box-shadow 220ms ease;
+  will-change: transform;
+}
+
+.kg-squish-card:hover {
+  transform: scale(1.015);
+}
+
+.kg-squish-card:active {
+  transform: scale(0.96);
+}
+
+/* Depth-Push App Shell Transition when Clinical / APK / Privilege Modal is Open */
+.kg-app-shell {
+  transition:
+    transform 420ms cubic-bezier(0.19, 1, 0.22, 1),
+    border-radius 420ms cubic-bezier(0.19, 1, 0.22, 1),
+    filter 360ms ease,
+    opacity 360ms ease;
+  transform-origin: center center;
+}
+
+.kg-app-shell.kg-depth-pushed {
+  transform: scale(0.94);
+  border-radius: 28px;
+  overflow: hidden;
+  filter: blur(4px) brightness(0.82);
+}
+
+[data-theme="daylight"] .kg-app-shell.kg-depth-pushed {
+  filter: blur(4px) brightness(0.94);
+}
+
+[data-theme="eco"] .kg-app-shell.kg-depth-pushed {
+  filter: none;
+  opacity: 0.55;
+}
+
+/* Theme-Adaptive Text Helpers so Daylight Frost & Warm Amber Stay Ultra-Legible */
+.kg-text-primary {
+  color: var(--kg-text-primary);
+}
+
+.kg-text-secondary {
+  color: var(--kg-text-secondary);
+}
+
+.kg-text-muted {
+  color: var(--kg-text-muted);
+}
+
+.kg-subtle-surface {
+  background: var(--kg-bg-subtle);
+  border: 1px solid var(--kg-prism-b);
+}
+
+.kg-strong-surface {
+  background: var(--kg-bg-elevated-strong);
+}
+
+/* Custom Range Slider Styling */
+input[type="range"].kg-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.24);
+  outline: none;
+}
+
+input[type="range"].kg-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--kg-accent), var(--kg-accent-secondary));
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 10px rgba(6, 182, 212, 0.5);
+  cursor: grab;
+  transition: transform 150ms ease;
+}
+
+input[type="range"].kg-range::-webkit-slider-thumb:active {
+  transform: scale(1.18);
+  cursor: grabbing;
+}
+
+/* Subtle Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.45);
+}

@@ -1,0 +1,96 @@
+name: Build Polyglot Rust WASM + Android Java 17 APK & Bundle for Vercel
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-kinesio-guard-apk:
+    name: Compile Rust WASM + Vue 3.5 + Java 17 Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Verify Strict Zero-TypeScript Policy (0.0% TS)
+        run: |
+          TS_FILES=$(find src api go_biomechanics rust-biomechanics android -type f \( -name "*.ts" -o -name "*.tsx" -o -name "tsconfig*.json" \) 2>/dev/null || true)
+          if [ -n "$TS_FILES" ]; then
+            echo "ERROR: TypeScript files detected in Zero-TypeScript repository:"
+            echo "$TS_FILES"
+            exit 1
+          fi
+          echo "Verified 0.0% TypeScript across all polyglot modules."
+
+      - name: Setup Rust Toolchain (wasm32-unknown-unknown)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Compile & Test Rust Biomechanics Crate
+        working-directory: rust-biomechanics
+        run: |
+          cargo test --release
+          cargo build --release --target wasm32-unknown-unknown
+
+      - name: Setup Go 1.22 & Validate Serverless Cervical Engine
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Vet, Test & Build Go 1.22 Biomechanics Package
+        run: |
+          go vet ./go_biomechanics/... ./api/...
+          go test -v ./go_biomechanics/...
+          go build ./go_biomechanics/... ./api/...
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Setup Java 17 (Temurin JDK for Android Gradle)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK for Gradle APK Assembly
+        uses: android-actions/setup-android@v3
+
+      - name: Install Dependencies & Build Vue 3.5 Web Bundle
+        run: |
+          npm ci
+          npm run build
+
+      - name: Sync Capacitor 6 Android Project & Assemble APK
+        run: |
+          npm install --no-save @capacitor/core@^6.2.0 @capacitor/cli@^6.2.0 @capacitor/android@^6.2.0
+          if [ ! -f "android/build.gradle" ]; then
+            mkdir -p /tmp/java-plugins-backup
+            cp -r android/app/src/main/java/com/kinesioguard/neuro/*.java /tmp/java-plugins-backup/
+            rm -rf android
+            npx cap add android
+            mkdir -p android/app/src/main/java/com/kinesioguard/neuro
+            cp /tmp/java-plugins-backup/*.java android/app/src/main/java/com/kinesioguard/neuro/
+          fi
+          npx cap sync android
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          mkdir -p ../public/releases
+          cp app/build/outputs/apk/debug/app-debug.apk ../public/releases/kinesioguard-release.apk
+
+      - name: Upload Compiled KinesioGuard APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KinesioGuard-NeuroBiomech-v1.0.0-apk
+          path: public/releases/kinesioguard-release.apk
+          retention-days: 30

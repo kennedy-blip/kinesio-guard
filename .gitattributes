@@ -1,0 +1,10 @@
+*.vue linguist-language=Vue linguist-detectable=true
+*.glsl linguist-language=GLSL linguist-detectable=true
+*.rs linguist-language=Rust linguist-detectable=true
+*.java linguist-language=Java linguist-detectable=true
+*.go linguist-language=Go linguist-detectable=true
+*.js linguist-language=JavaScript linguist-detectable=true
+*.css linguist-language=CSS linguist-detectable=true
+index.html linguist-generated=true
+package-lock.json linguist-generated=true
+public/releases/* linguist-generated=true

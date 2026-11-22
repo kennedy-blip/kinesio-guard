@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-ssr/
+.DS_Store
+*.local
+.vercel/
+rust-biomechanics/target/
+android/.gradle/
+android/app/build/
+android/build/
+Unselected files/
