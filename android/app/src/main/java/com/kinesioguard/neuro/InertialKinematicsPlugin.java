@@ -16,6 +16,8 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import org.json.JSONException;
+
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -181,9 +183,13 @@ public class InertialKinematicsPlugin extends Plugin implements SensorEventListe
             int startIdx = (ringWriteIndex - exported + RING_BUFFER_CAPACITY) % RING_BUFFER_CAPACITY;
             for (int i = 0; i < exported; i++) {
                 int idx = (startIdx + i) % RING_BUFFER_CAPACITY;
-                axArr.put(ringAx[idx]);
-                ayArr.put(ringAy[idx]);
-                azArr.put(ringAz[idx]);
+                try {
+                    axArr.put(ringAx[idx]);
+                    ayArr.put(ringAy[idx]);
+                    azArr.put(ringAz[idx]);
+                } catch (JSONException ignored) {
+                    // Guard against non-finite IEEE-754 sensor samples in org.json.JSONArray
+                }
             }
         }
 
