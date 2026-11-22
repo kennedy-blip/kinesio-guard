@@ -19,7 +19,11 @@ const props = defineProps({
   viewportMode: { type: String, default: 'desktop' },
   roleTier: { type: String, default: 'STANDARD' },
   activeSensorCount: { type: Number, default: 2 },
-  stressLevel: { type: Number, default: 0.12 }
+  stressLevel: { type: Number, default: 0.12 },
+  nativeBridge: {
+    type: Object,
+    default: () => ({ isNativeApk: false })
+  }
 })
 
 const emit = defineEmits([
@@ -44,13 +48,15 @@ const roleDisplayMap = {
 
 const apkJustPackaged = ref(false)
 
-function handleDirectApkAction() {
-  triggerEmbeddedOneTapApkDownload()
-  apkJustPackaged.value = true
-  setTimeout(() => {
-    apkJustPackaged.value = false
-  }, 2600)
+async function handleDirectApkAction() {
   emit('open-apk-modal')
+  if (!props.nativeBridge?.isNativeApk) {
+    await triggerEmbeddedOneTapApkDownload()
+    apkJustPackaged.value = true
+    setTimeout(() => {
+      apkJustPackaged.value = false
+    }, 2800)
+  }
 }
 </script>
 
@@ -171,15 +177,23 @@ function handleDirectApkAction() {
           </span>
         </button>
 
-        <!-- Prominent Self-Packaged One-Tap Android .APK Download + Distribution Center Trigger -->
+        <!-- Prominent Signed Release Android .APK Download + Native Bridge Status Trigger -->
         <button
           type="button"
           class="kg-squish-card inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold text-white bg-gradient-to-r from-cyan-500 via-teal-500 to-violet-600 shadow-lg shadow-cyan-500/25 border border-white/25"
           @click="handleDirectApkAction"
         >
-          <CheckCircle2 v-if="apkJustPackaged" class="h-4 w-4 text-emerald-200" />
+          <CheckCircle2 v-if="apkJustPackaged || nativeBridge?.isNativeApk" class="h-4 w-4 text-emerald-200" />
           <Download v-else class="h-4 w-4" />
-          <span>{{ apkJustPackaged ? 'APK Packaged & Saved!' : 'Download Android .APK' }}</span>
+          <span>
+            {{
+              nativeBridge?.isNativeApk
+                ? 'Native APK · 200Hz Active'
+                : apkJustPackaged
+                  ? 'Signed .APK Saved!'
+                  : 'Download Android .APK'
+            }}
+          </span>
         </button>
       </div>
     </div>

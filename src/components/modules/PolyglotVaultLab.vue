@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import {
   Code2,
   Database,
@@ -25,6 +25,7 @@ import jsBridgeSrc from '../../engines/rustBiomechBridge.js?raw'
 
 import {
   TREMOR_PRESETS,
+  initRustBiomechWasm,
   synthesizeTremorWaveform3Axis,
   runPolyglotDspBenchmark
 } from '../../engines/rustBiomechBridge.js'
@@ -135,6 +136,7 @@ const pendingSyncCount = computed(
 )
 
 async function executePolyglotSuite() {
+  await initRustBiomechWasm()
   benchResult.value = runPolyglotDspBenchmark()
   isRunningGoTest.value = true
   liveGoOutput.value = await invokeGoKinesioTriage({
@@ -147,6 +149,11 @@ async function executePolyglotSuite() {
   })
   isRunningGoTest.value = false
 }
+
+onMounted(async () => {
+  await initRustBiomechWasm()
+  benchResult.value = runPolyglotDspBenchmark()
+})
 
 function downloadRaw200HzCsv() {
   const synth = synthesizeTremorWaveform3Axis(TREMOR_PRESETS[1], 1000, 200, 0)
@@ -233,9 +240,15 @@ function downloadVaultJson() {
       <!-- Benchmark Metrics Strip -->
       <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-4">
         <div class="rounded-xl p-3 kg-subtle-surface">
-          <div class="text-[10px] font-mono uppercase kg-text-muted">WASM f64 Kernel</div>
+          <div class="text-[10px] font-mono uppercase kg-text-muted">Rust WASM32 Kernel</div>
           <div class="mt-0.5 font-mono text-sm font-bold text-emerald-400">
-            {{ benchResult.wasmKernelActive ? 'INSTANTIATED · SIMD READY' : 'JS MIRROR' }}
+            {{
+              benchResult.wasmRuntimeSource === 'RUSTC_WASM32_RELEASE_BINARY'
+                ? `RUSTC WASM (${benchResult.wasmByteLength}B)`
+                : benchResult.wasmKernelActive
+                  ? 'INSTANTIATED · SIMD READY'
+                  : 'JS MIRROR'
+            }}
           </div>
         </div>
         <div class="rounded-xl p-3 kg-subtle-surface">

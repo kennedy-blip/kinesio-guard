@@ -212,6 +212,24 @@ pub extern "C" fn kinesio_pca_ellipse_area_mm2(cov_xx: f64, cov_yy: f64, cov_xy:
     core::f64::consts::PI * romberg_sway::CHI_SQUARE_2DOF_95 * (l1 * l2).sqrt()
 }
 
+/// C/WebAssembly ABI entry point: computes Elble-Weber logarithmic MDS-UPDRS tremor severity (0.0 - 4.0).
+#[no_mangle]
+pub extern "C" fn kinesio_updrs_log_score(rms_displacement_mm: f64) -> f64 {
+    if rms_displacement_mm < 0.12 {
+        0.0
+    } else {
+        let amp_cm = (rms_displacement_mm / 10.0).max(0.001);
+        ((amp_cm / 0.025).log10() * 1.65).clamp(0.0, 4.0)
+    }
+}
+
+/// C/WebAssembly ABI entry point: projects sternum tilt angle (degrees) to ground CoP excursion (mm).
+#[no_mangle]
+pub extern "C" fn kinesio_sternum_cop_mm(tilt_deg: f64, sternum_height_mm: f64) -> f64 {
+    let h = sternum_height_mm.clamp(850.0, 1650.0);
+    h * 0.18 * tilt_deg.to_radians().sin()
+}
+
 /// 6-DoF Madgwick Quaternion AHRS filter fusing 200Hz 3-axis gyroscope (rad/s) and
 /// 3-axis accelerometer (m/s²) to compute gimbal-lock-free cranial flexion & sternum tilt.
 #[derive(Clone, Copy, Debug)]
